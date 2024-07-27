@@ -1,0 +1,143 @@
+import pandas as pd
+import numpy as np
+import os 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_recall_curve
+
+
+file_path = os.path.join('data_LR', 'airbnbData_train.csv')
+df = pd.read_csv(file_path)
+
+y = df['host_is_superhost']
+
+X = df.drop(columns=['host_is_superhost'])
+
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.10, random_state=42)
+
+model_default = LogisticRegression(max_iter=1000)
+model_default.fit(X_train, y_train)
+
+# 1. Make predictions on the test data using the predict_proba() method
+proba_predictions_default = model_default.predict_proba(X_test)[:, 1]
+
+# 2. Make predictions on the test data using the predict() method
+class_label_predictions_default = model_default.predict(X_test)
+
+conf_matrix_default = confusion_matrix(y_test, class_label_predictions_default)
+print(conf_matrix_default)
+
+param_grid = {'C': [10**i for i in range(-5, 5)]}
+
+param_grid
+
+print('Running Grid Search...')
+
+# 1. Create a LogisticRegression model object with the argument max_iter=1000. 
+#    Save the model object to the variable 'model'
+model = LogisticRegression(max_iter=1000)
+
+
+# 2. Run a grid search with 5-fold cross-validation and assign the output to the 
+# object 'grid'.
+grid = GridSearchCV(model, param_grid, cv=5)
+
+
+# 3. Fit the model on the training data and assign the fitted model to the 
+#    variable 'grid_search'
+grid_search = grid.fit(X_train, y_train)
+
+print('Done')
+
+best_C = grid_search.best_params_['C']
+
+best_C
+
+model_best = LogisticRegression(C=best_C, max_iter=1000)
+model_best.fit(X_train, y_train)
+
+
+# 1. Make predictions on the test data using the predict_proba() method
+proba_predictions_best = model_best.predict_proba(X_test)[:, 1]
+
+# 2. Make predictions on the test data using the predict() method
+class_label_predictions_best = model_best.predict(X_test)
+
+conf_matrix_best = confusion_matrix(y_test, class_label_predictions_best)
+
+precision_default, recall_default, thresholds_default = precision_recall_curve(y_test, proba_predictions_default)
+precision_best, recall_best, thresholds_best = precision_recall_curve(y_test, proba_predictions_best)
+
+sns.lineplot(x=recall_default, y=precision_default, color='green', label='Default')
+
+sns.lineplot(x=recall_best, y=precision_best, color='red', label='Best')
+
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.title('Precision-Recall Curve')
+plt.legend()
+plt.show()
+
+from sklearn.metrics import roc_curve
+from sklearn.metrics import auc
+
+fpr_default, tpr_default, thresholds_default = roc_curve(y_test, proba_predictions_default)
+fpr_best, tpr_best, thresholds_best = roc_curve(y_test, proba_predictions_best)
+
+sns.lineplot(x=fpr_default, y=tpr_default, color='green', label='Default')
+sns.lineplot(x=fpr_best, y=tpr_best, color='red', label='Best')
+auc_default = auc(fpr_default, tpr_default)
+auc_best = auc(fpr_best, tpr_best)
+
+print(auc_default)
+print(auc_best)
+
+from sklearn.feature_selection import SelectKBest
+from sklearn.feature_selection import f_classif
+
+# Note that k=5 is specifying that we want the top 5 features
+selector = SelectKBest(f_classif, k=5)
+selector.fit(X, y)
+filter = selector.get_support()
+top_5_features = X.columns[filter]
+
+print("Best 5 features:")
+print(top_5_features)
+
+# Create new training and test data for features
+new_X_train = X_train[top_5_features]
+new_X_test = X_test[top_5_features]
+
+
+# Initialize a LogisticRegression model object with the best value of hyperparameter C 
+# The model object should be named 'model'
+# Note: Supply max_iter=1000 as an argument when creating the model object
+new_X_train = X_train[top_5_features]
+new_X_test = X_test[top_5_features]
+
+
+# Fit the model to the new training data
+model = LogisticRegression(C=best_C, max_iter=1000)
+model.fit(new_X_train, y_train)
+
+# Use the predict_proba() method to use your model to make predictions on the new test data 
+# Save the values of the second column to a list called 'proba_predictions'
+proba_predictions = model.predict_proba(new_X_test)[:, 1]
+
+
+# Compute the auc-roc
+fpr, tpr, thresholds = roc_curve(y_test, proba_predictions)
+auc_result = auc(fpr, tpr)
+print(auc_result)
+
+import pickle
+
+with open('model_best.pkl', 'wb') as file:
+    pickle.dump(model_best, file)
+
+with open('model_best.pkl', 'rb') as file:
+    loaded_model = pickle.load(file)
